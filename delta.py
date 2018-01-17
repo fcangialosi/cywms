@@ -10,11 +10,19 @@ import subprocess
 ##############################################################################$
 ### Params
 ##############################################################################$
-sensitivity = 70 # out of 100, higher is more sensitive
-fps = 20
+sensitivity = 55 # out of 100, higher is more sensitive
+fps = 15
 ##############################################################################$
 nz_threshold = 100 - sensitivity
+consec_threshold = max(int((100 - sensitivity) / 10) - 1, 2)
+events_threshold = max(int(consec_threshold / 2), 2)
 frame_wait = 1.0 / fps
+print("nz={} consec={} events={} wait={}".format(
+    nz_threshold,
+    consec_threshold,
+    events_threshold,
+    frame_wait
+))
 
 ##############################################################################$
 ### Turn off screen while running ###
@@ -36,8 +44,11 @@ def exit(code):
     sys.exit(code)
 
 def alert():
-    os.system("play alert.wav")
-
+    subprocess.check_call(
+            ['play', 'alert.wav'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT
+    )
 ##############################################################################$
 
 ##############################################################################$
@@ -78,7 +89,7 @@ gray1 = normalize(initial)
 
 
 moved_in_a_row = 0
-think_actually_moved = False
+events = 0
 while True:
 
     # Grab current image
@@ -109,7 +120,7 @@ while True:
     moved_this_time = False
     if vert and horz:
         moved_this_time = True
-    elif (vert and total > nz_threshold) or (horz and total > 50):
+    elif (vert and total > nz_threshold) or (horz and total > nz_threshold):
         moved_this_time = True
 
     # Number of consecutive frames that indicate movement
@@ -122,28 +133,30 @@ while True:
     # take a new background snapshot. 
     # If there is still movement after that, it's likely that the machine has actually moved.
     # If not, then it maybe it was just bumped
-    if moved_in_a_row >= 5:
-        if think_actually_moved:
-            alert()
-            exit(0)
-        else:
-            think_actually_moved = True
-            moved_in_a_row = 0
-            gray1 = gray2
+    if moved_in_a_row >= consec_threshold:
+        events += 1
+        moved_in_a_row = 0
+        gray1 = gray2
 
-    print("t={:03d} b={:03d} l={:03d} r={:03d} tot={:03d} {}".format(
+    if events >= events_threshold:
+        alert()
+        exit(0)
+
+    print("t={:03d} b={:03d} l={:03d} r={:03d} tot={:03d} {} {} {}".format(
         top_nz,
         bottom_nz,
         left_nz,
         right_nz,
         total,
-        "!!!" if moved_this_time else ""
+        "!!!" if moved_this_time else "",
+        moved_in_a_row,
+        events
     ))
 
-    #code.interact(local=locals())
     cv2.imshow('dilated', dilated)
     cv2.waitKey(3)
 
     #cv2.waitKey(0)
     #cv2.destroyAllWindows()
+    #code.interact(local=locals())
 
